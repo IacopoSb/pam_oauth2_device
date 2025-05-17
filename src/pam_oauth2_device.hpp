@@ -32,11 +32,15 @@ void poll_for_token(const char *client_id,
                     const char *client_secret,
                     const char *token_endpoint,
                     const char *device_code,
-                    std::string &token);
+                    std::string &access_token,
+                    std::string &id_token);
 
 void get_userinfo(const char *userinfo_endpoint,
-                  const char *token,
+                  const char *access_token,
+                  const std::string &id_token,
                   const char *username_attribute,
                   Userinfo *userinfo);
+
+void parse_id_token(const Config &config, const std::string &id_token, Userinfo *userinfo);
 
 #endif // PAM_OAUTH2_DEVICE_HPP

@@ -229,7 +229,8 @@ void poll_for_token(const Config config,
                     const char *client_secret,
                     const char *token_endpoint,
                     const char *device_code,
-                    std::string &token)
+                    std::string &access_token,
+                    std::string &id_token)
 {
     int timeout = 300,
         interval = 3;
@@ -278,7 +279,14 @@ void poll_for_token(const Config config,
             data = json::parse(readBuffer);
             if (data["error"].empty())
             {
-                token = data.at("access_token");
+                access_token = data.at("access_token");
+                // Also retrieve the ID token if available
+                if (data.find("id_token") != data.end()) {
+                    id_token = data.at("id_token");
+                    if (config.debug) printf("ID token received\n");
+                } else {
+                    if (config.debug) printf("No ID token in response\n");
+                }
                 break;
             }
             else if (data["error"] == "authorization_pending")
@@ -303,7 +311,8 @@ void poll_for_token(const Config config,
 
 void get_userinfo(const Config &config,
                   const char *userinfo_endpoint,
-                  const char *token,
+                  const char *access_token,
+                  const std::string &id_token,
                   const char *username_attribute,
                   Userinfo *userinfo)
 {
@@ -319,7 +328,7 @@ void get_userinfo(const Config &config,
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
 
     std::string auth_header = "Authorization: Bearer ";
-    auth_header += token;
+    auth_header += access_token;
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, auth_header.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -330,12 +339,32 @@ void get_userinfo(const Config &config,
         throw NetworkError();
     try
     {
-        if (config.debug) printf("Userinfo token: %s\n", readBuffer.c_str());
+        if (config.debug) printf("Userinfo response: %s\n", readBuffer.c_str());
         auto data = json::parse(readBuffer);
         userinfo->sub = data.at("sub");
         userinfo->username = data.at(username_attribute);
         userinfo->name = data.at("name");
-        userinfo->groups = data.at("groups").get<std::vector<std::string>>();
+        
+        // Try to get groups from userinfo endpoint first
+        bool groups_from_userinfo = false;
+        try {
+            if (data.find("groups") != data.end()) {
+                userinfo->groups = data.at("groups").get<std::vector<std::string>>();
+                groups_from_userinfo = true;
+                if (config.debug) printf("Groups successfully retrieved from userinfo endpoint\n");
+            }
+        } catch (json::exception &e) {
+            if (config.debug) printf("No groups in userinfo response, will try ID token\n");
+        }
+        
+        // If we couldn't get groups from userinfo, try the ID token
+        if (!groups_from_userinfo && !id_token.empty()) {
+            parse_id_token(config, id_token, userinfo);
+        }
+        
+        if (userinfo->groups.empty() && config.debug) {
+            printf("Warning: No groups found in either userinfo or ID token\n");
+        }
     }
     catch (json::exception &e)
     {
@@ -448,7 +477,8 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const c
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
     const char *username_local;
-    std::string token;
+    std::string access_token;
+    std::string id_token;
     Config config;
     DeviceAuthResponse device_auth_response;
     Userinfo userinfo;
@@ -488,9 +518,9 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         }    
         poll_for_token(config, config.client_id.c_str(), config.client_secret.c_str(),
                        config.token_endpoint.c_str(),
-                       device_auth_response.device_code.c_str(), token);
-        get_userinfo(config, config.userinfo_endpoint.c_str(), token.c_str(),
-                     config.username_attribute.c_str(), &userinfo);
+                       device_auth_response.device_code.c_str(), access_token, id_token);
+        get_userinfo(config, config.userinfo_endpoint.c_str(), access_token.c_str(), 
+                     id_token, config.username_attribute.c_str(), &userinfo);
         // Set PAM_USER to username for next modules in the PAM stack             
         if (pam_set_item(pamh, PAM_USER, userinfo.username.c_str()) != PAM_SUCCESS)
             throw PamError();             
@@ -512,6 +542,107 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
     if (is_authorized(&config, &userinfo))
         return PAM_SUCCESS;	
     return PAM_AUTH_ERR;
+}
+
+/* Decode base64url encoded string */
+std::string base64url_decode(const std::string &input) {
+    std::string base64 = input;
+
+        printf("Base64URL input: %s\n", input.c_str());
     
-    return PAM_SUCCESS;
+
+    // Convert from Base64URL to Base64
+    std::replace(base64.begin(), base64.end(), '-', '+');
+    std::replace(base64.begin(), base64.end(), '_', '/');    
+
+    // Add padding if necessary
+    while (base64.size() % 4 != 0) {
+        base64 += '=';
+    }    
+
+    // Decode Base64
+    std::string decoded;
+    static const std::string base64_chars = 
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789+/";
+    for (size_t i = 0; i < base64.size(); i += 4) {
+        char a = base64_chars.find(base64[i]);
+        char b = base64_chars.find(base64[i + 1]);
+        char c = base64[i + 2] == '=' ? 0 : base64_chars.find(base64[i + 2]);
+        char d = base64[i + 3] == '=' ? 0 : base64_chars.find(base64[i + 3]);
+
+        decoded.push_back((a << 2) | (b >> 4));
+        if (base64[i + 2] != '=') {
+            decoded.push_back((b << 4) | (c >> 2));
+        }
+        if (base64[i + 3] != '=') {
+            decoded.push_back((c << 6) | d);
+        }
+    }
+
+    return decoded;
+}
+
+void parse_id_token(const Config &config, const std::string &id_token, Userinfo *userinfo) {
+    if (id_token.empty()) {
+        if (config.debug) printf("ID token is empty, can't extract groups\n");
+        return;
+    }
+
+    try {
+        if (config.debug) printf("Parsing ID token to extract groups\n");
+
+        // Split token by dots
+        std::string::size_type first_dot = id_token.find('.');
+        std::string::size_type second_dot = id_token.find('.', first_dot + 1);
+
+        if (first_dot != std::string::npos && second_dot != std::string::npos) {
+            // Extract payload (second part)
+            std::string payload = id_token.substr(first_dot + 1, second_dot - first_dot - 1);
+
+            // Debug log for raw payload before decoding
+            if (config.debug) {
+                printf("Raw payload before Base64URL decoding: %s\n", payload.c_str());
+            }
+
+            // Base64url decode
+            std::string decoded_payload = base64url_decode(payload);
+
+            // Check if decoded payload is empty
+            if (decoded_payload.empty()) {
+                if (config.debug) {
+                    printf("Decoded payload is empty, skipping JSON parsing.\n");
+                }
+                return;
+            }
+
+            // Parse JSON
+            try {
+                auto data = json::parse(decoded_payload);
+
+                // Extract groups if available
+                if (data.contains("groups")) {
+                    userinfo->groups = data["groups"].get<std::vector<std::string>>();
+                    if (config.debug) {
+                        printf("Groups extracted from ID token: ");
+                        for (const auto &group : userinfo->groups) {
+                            printf("%s ", group.c_str());
+                        }
+                        printf("\n");
+                    }
+                } else if (config.debug) {
+                    printf("No groups found in the ID token payload.\n");
+                }
+            } catch (const json::exception &e) {
+                if (config.debug) {
+                    printf("Error parsing decoded payload as JSON: %s\n", e.what());
+                }
+            }
+        } else {
+            if (config.debug) printf("ID token does not have the expected format (missing dots)\n");
+        }
+    } catch (std::exception &e) {
+        if (config.debug) printf("Unexpected error while parsing ID token: %s\n", e.what());
+    }
 }
