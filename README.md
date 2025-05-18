@@ -6,6 +6,9 @@ It uses the OAuth2 Device Flow, which means that during the login process, you w
 
 This module will then check if you're in the right group(s), if any has been specified in the module configuration, and allow or deny access.
 
+## What is added with this fork
+
+This fork (originally from [@maricaantonacci](https://github.com/maricaantonacci/pam_oauth2_device)) adds a feature to check also the groups if present on the user id part of the token (and not only in the authentication token). This modification has been made to implement this PAM better with Microsoft Entra authentication. If groups are found in the authorization token, the flow is the same as the original.
 
 ## Installation (Ubuntu 20.04)
 
