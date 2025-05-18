@@ -10,23 +10,6 @@ This module will then check if you're in the right group(s), if any has been spe
 
 This fork (originally from [@maricaantonacci](https://github.com/maricaantonacci/pam_oauth2_device)) adds a feature to check also the groups if present on the user id part of the token (and not only in the authentication token). This modification has been made to implement this PAM better with Microsoft Entra authentication. If groups are found in the authorization token, the flow is the same as the original.
 
-## Installation (Ubuntu 20.04)
-
-Download the debian package from the [releases page](https://github.com/maricaantonacci/pam_oauth2_device/releases) and install it, e.g.:
-
-```
-wget https://github.com/maricaantonacci/pam_oauth2_device/releases/download/v0.0.1/pam-oauth2-device_0.0.1_all.deb
-sudo dpkg -i pam-oauth2-device_0.0.1_all.deb
-```
-The module and its configuration file will be installed:
-
-```
-/etc/pam_oauth2_device/config.json
-/usr/lib/x86_64-linux-gnu/security/pam_oauth2_device.so
-```
-
-:warning: You have to edit the configuration file to make this module work.
-
 ## Build (Ubuntu 20.04)
 
 **Requirements**: make, g++ (`sudo apt install build-essential`)
