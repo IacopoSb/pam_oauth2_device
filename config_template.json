@@ -22,9 +22,10 @@
         "from_address": "vpn@example.com",
         "from_username": "noreply@infn-cloud-vpn",
         "cc_address": ""
-    },
-    "qr": {
+    },    "qr": {
         "error_correction_level": 0
     },
+    "use_default_user": false,
+    "default_user": "defaultusername",
     "debug": true 
 }

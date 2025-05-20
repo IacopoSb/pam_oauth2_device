@@ -36,11 +36,14 @@ void Config::load(const char *path)
         mail_from = j.at("send_mail").at("from_address").get<std::string>();
         mail_cc = j.at("send_mail").at("cc_address").get<std::string>();
         mail_from_username = j.at("send_mail").at("from_username").get<std::string>();
-    }    
-
-    debug = (j.find("debug") != j.end()) ? j.at("debug").get<bool>() : false;
+    }        debug = (j.find("debug") != j.end()) ? j.at("debug").get<bool>() : false;
 
     http_basic_auth = (j.find("http_basic_auth") != j.end()) ?
         j.at("http_basic_auth").get<bool>() : true;
 
+    use_default_user = (j.find("use_default_user") != j.end()) ?
+        j.at("use_default_user").get<bool>() : false;
+
+    default_user = (j.find("default_user") != j.end()) ?
+        j.at("default_user").get<std::string>() : "";
 }

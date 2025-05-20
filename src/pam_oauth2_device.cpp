@@ -518,12 +518,17 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
         }    
         poll_for_token(config, config.client_id.c_str(), config.client_secret.c_str(),
                        config.token_endpoint.c_str(),
-                       device_auth_response.device_code.c_str(), access_token, id_token);
-        get_userinfo(config, config.userinfo_endpoint.c_str(), access_token.c_str(), 
+                       device_auth_response.device_code.c_str(), access_token, id_token);        get_userinfo(config, config.userinfo_endpoint.c_str(), access_token.c_str(), 
                      id_token, config.username_attribute.c_str(), &userinfo);
-        // Set PAM_USER to username for next modules in the PAM stack             
-        if (pam_set_item(pamh, PAM_USER, userinfo.username.c_str()) != PAM_SUCCESS)
-            throw PamError();             
+        // Set PAM_USER to configured default_user or to username from userinfo depending on configuration
+        const char* user_to_set = (config.use_default_user && !config.default_user.empty()) ? 
+                                  config.default_user.c_str() : userinfo.username.c_str();
+        if (config.debug) {
+            printf("Setting PAM_USER to %s%s\n", user_to_set, 
+                  (config.use_default_user && !config.default_user.empty()) ? " (default user from config)" : "");
+        }
+        if (pam_set_item(pamh, PAM_USER, user_to_set) != PAM_SUCCESS)
+            throw PamError();
     }
     catch (PamError &e)
     {

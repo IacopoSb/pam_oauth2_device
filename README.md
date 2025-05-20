@@ -10,6 +10,8 @@ This module will then check if you're in the right group(s), if any has been spe
 
 This fork (originally from [@maricaantonacci](https://github.com/maricaantonacci/pam_oauth2_device)) adds a feature to check also the groups if present on the user id part of the token (and not only in the authentication token). This modification has been made to implement this PAM better with Microsoft Entra authentication. If groups are found in the authorization token, the flow is the same as the original.
 
+Additionally, this fork now supports a default user functionality. You can configure the module to use a specified local user account regardless of which user authenticates through the OAuth provider. This is useful when you want multiple users to authenticate with their personal OAuth credentials but access the system with the same local account. The feature is controlled through the `use_default_user` and `default_user` configuration settings (see Configuration section below for details).
+
 ## Build (Ubuntu 20.04)
 
 **Requirements**: make, g++ (`sudo apt install build-essential`)
@@ -72,6 +74,10 @@ If no **qr** information is provided, the QR will not be printed.
   * mail_cc
 
 **debug** - boolean value; if set to true, additional debugging information is printed to stdout by the module.
+
+**use_default_user** - boolean value; if set to true, the module will use the username specified by **default_user** instead of the username received from the OAuth provider. This is useful when you want all users to access the system with a common local account.
+
+**default_user** - string value; specifies the local username to be used when **use_default_user** is set to true. This username should exist on the system.
 
 ## Testing the module works
 
